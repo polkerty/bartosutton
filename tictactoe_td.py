@@ -376,9 +376,19 @@ def main():
 
     rl_internals = get_internals()
 
-    play_tourney(rando, rl_player_factory(weights=rl_internals["weights"], explore_rate=0)[0])
+    sumo = rl_player_factory(weights=rl_internals["weights"], explore_rate=0)[0]
+
+    play_tourney(rando, sumo)
 
     print(rl_internals["alpha"])
+
+    for _ in range(10):
+        print("sumo vs rando:")
+        play(sumo, rando, verbose=True)
+        print("rando vs sumo:")
+        play(rando, sumo, verbose=True)
+        print("sumo vs sumo!:")
+        play(sumo, sumo, verbose=True)
 
 
 if __name__ == '__main__':
