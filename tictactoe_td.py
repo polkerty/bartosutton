@@ -17,6 +17,8 @@ X_TOK, O_TOK = 'x', 'o'
 ILLEGAL_STATE, XWIN_STATE, OWIN_STATE, DRAW_STATE, XTURN_STATE, OTURN_STATE = \
     'illegal', 'xwin', 'owin', 'draw', 'xturn', 'oturn'
 
+EMPTY = tuple((None,)*3 for _ in range(3))
+
 '''
 count_pieces
 
@@ -107,7 +109,7 @@ def classify_board(board):
         return XTURN_STATE
 
 '''
-    get_neighbors:
+    get_children:
 
     This method takes a board and returns a list of valid successor states.
     We do this by (1) determining whose turn it is, and (2) attempting to place
@@ -115,7 +117,7 @@ def classify_board(board):
 
     If the game is finished or in an illegal state, we return an empty list of states. 
 '''
-def get_neighbors(board):
+def get_children(board):
     state = classify_board(board)
 
     def _move(board, r, c, piece):
@@ -150,10 +152,9 @@ make_states:
 '''
 def make_states():
     from collections import deque
-    empty = tuple((None,)*3 for _ in range(3))
-    q = deque([empty])
+    q = deque([EMPTY])
     value_map = dict()
-    seen = set([empty])
+    seen = set([EMPTY])
     
     while len(q):
         top = q.popleft()
@@ -168,7 +169,7 @@ def make_states():
             score = (0.5, 0.5) # initialize unknown positions to 0.5 for both players
 
         value_map[top] = score
-        neighbors = get_neighbors(top)
+        neighbors = get_children(top)
         for neighbor in neighbors:
             if neighbor not in seen:
                 seen.add(neighbor)
@@ -187,18 +188,112 @@ def print_board(board):
         _printrow(row)
     
 
-def tests():
+'''rlagent
+
+This is a factory function that returns a player.
+Use it like so: 
+    player = rlagent(weights)
+    move = player(board, valid_moves)
+
+The player function will choose a move from the options
+presented to it, trying to optimize winning chances for 
+the current player.
+
+'''
+def rlagent(weights):
     pass
 
 
+'''
+play
+
+This method plays a single game between xplayer and oplayer
+and reports the result
+'''
+def play(xplayer, oplayer):
+    board = EMPTY
+    state = classify_board(board)
+
+    while state in (XTURN_STATE, OTURN_STATE):
+        # print_board(board)
+        # print(state)
+
+        # 1. find possible moves
+        moves = get_children(board)
+        if state == XTURN_STATE:
+            board = xplayer(board, moves)
+        else:
+            board = oplayer(board, moves)
+        
+        state = classify_board(board)
+
+    print_board(board)
+    print(state)
+    return state
+
+def play_tourney(p1, p2, games=1000):
+
+    x, o = p1, p2
+    stats = {
+        "p1": 0,
+        "p2": 0,
+        "x": 0,
+        "o": 0,
+        "draw": 0
+    }
+    for game in range(games):
+        result = play(x, o)
+
+        # judge
+        if result == DRAW_STATE:
+            stats["draw"] += 1
+        elif result == XWIN_STATE:
+            stats["x"] += 1
+
+            if x == p1:
+                stats["p1"] += 1
+            else:
+                stats["p2"] += 1
+        elif result == OWIN_STATE:
+            stats["o"] += 1
+
+            if o == p1:
+                stats["p1"] += 1
+            else:
+                stats["p2"] += 1
+        else:
+            raise ValueError("Invalid state: " + result)
+        
+        # print results
+        print(f"#{game + 1}/{games}: {result} | {"p1 = x, p2 = o" if p1 == x else "p1 = o, p2 = x"} | ", stats)
+
+        # switch sides for next game
+        x, o = o, x
+
+
+
+
+def random_player(board, moves):
+    from random import choice
+    return choice(moves)
+
+# A wrapper to ensure that player identities 
+# are unique.
+def fac(player):
+    def fn(board, moves):
+        return player(board, moves)
+    
+    return fn
+
 def main():
     states = make_states()
-    for state, value in states.items():
-        print_board(state)
-        print(value)
+    # for state, value in states.items():
+    #     print_board(state)
+    #     print(value)
     print("total states: ", len(states))
+
+    play_tourney(fac(random_player), fac(random_player), 10000)
 
 
 if __name__ == '__main__':
-    tests()
     main()
