@@ -12,12 +12,18 @@ To recreate the system described in the text, we need the following components:
 '''
 
 # constants
+from random import seed
+seed('foo')
+
 X_TOK, O_TOK = 'x', 'o'
 
 ILLEGAL_STATE, XWIN_STATE, OWIN_STATE, DRAW_STATE, XTURN_STATE, OTURN_STATE = \
     'illegal', 'xwin', 'owin', 'draw', 'xturn', 'oturn'
 
 EMPTY = tuple((None,)*3 for _ in range(3))
+
+NEW_GAME_ACTION, END_GAME_ACTION, MOVE_ACTION = \
+    'newgame', 'endgame', 'move'
 
 '''
 count_pieces
@@ -160,13 +166,13 @@ def make_states():
         top = q.popleft()
         state = classify_board(top)
         if state == XWIN_STATE:
-            score = (1, 0) # 1 if we're X, 0 if we're O, obviously
+            score = { X_TOK: 1, O_TOK: 0} # 1 if we're X, 0 if we're O, obviously
         elif state == OWIN_STATE:
-            score = (0, 1)
+            score = { X_TOK: 0, O_TOK: 1}
         elif state == DRAW_STATE:
-            score = (0, 0) # we never want to draw
+            score = { X_TOK: 0, O_TOK: 0} # we never want to draw
         else:
-            score = (0.5, 0.5) # initialize unknown positions to 0.5 for both players
+            score = { X_TOK: 0.5, O_TOK: 0.5} # initialize unknown positions to 0.5 for both players
 
         value_map[top] = score
         neighbors = get_children(top)
@@ -188,42 +194,27 @@ def print_board(board):
         _printrow(row)
     
 
-'''rlagent
-
-This is a factory function that returns a player.
-Use it like so: 
-    player = rlagent(weights)
-    move = player(board, valid_moves)
-
-The player function will choose a move from the options
-presented to it, trying to optimize winning chances for 
-the current player.
-
-'''
-def rlagent(weights):
-    pass
-
-
 '''
 play
 
 This method plays a single game between xplayer and oplayer
 and reports the result
 '''
-def play(xplayer, oplayer):
+def play(xplayer, oplayer, verbose=False):
     board = EMPTY
     state = classify_board(board)
 
     while state in (XTURN_STATE, OTURN_STATE):
-        # print_board(board)
-        # print(state)
+        if verbose:
+            print_board(board)
+            print(state)
 
         # 1. find possible moves
         moves = get_children(board)
         if state == XTURN_STATE:
-            board = xplayer(board, moves)
+            board = xplayer(MOVE_ACTION, (board, moves))
         else:
-            board = oplayer(board, moves)
+            board = oplayer(MOVE_ACTION, (board, moves))
         
         state = classify_board(board)
 
@@ -242,13 +233,23 @@ def play_tourney(p1, p2, games=1000):
         "draw": 0
     }
     for game in range(games):
+
+        # signal that the game has started
+        # (for stateful agents)
+        p1(NEW_GAME_ACTION)
+        p2(NEW_GAME_ACTION)
+
         result = play(x, o)
 
         # judge
         if result == DRAW_STATE:
             stats["draw"] += 1
+            x(END_GAME_ACTION, (X_TOK, 0))
+            o(END_GAME_ACTION, (O_TOK, 0))
         elif result == XWIN_STATE:
             stats["x"] += 1
+            x(END_GAME_ACTION, (X_TOK, 1))
+            o(END_GAME_ACTION, (O_TOK, 0))
 
             if x == p1:
                 stats["p1"] += 1
@@ -256,6 +257,8 @@ def play_tourney(p1, p2, games=1000):
                 stats["p2"] += 1
         elif result == OWIN_STATE:
             stats["o"] += 1
+            x(END_GAME_ACTION, (X_TOK, 0))
+            o(END_GAME_ACTION, (O_TOK, 1))
 
             if o == p1:
                 stats["p1"] += 1
@@ -273,15 +276,87 @@ def play_tourney(p1, p2, games=1000):
 
 
 
-def random_player(board, moves):
-    from random import choice
-    return choice(moves)
+def random_player(action, data=None):
+    # random player can ignore other signals
+    if action == MOVE_ACTION:
+        from random import choice
+        board, moves = data
+        return choice(moves)
+
+def rl_player_factory(explore_rate=0.1, weights=None):
+    # weights 
+    if not weights:
+        weights = make_states()
+
+    alpha = 0.5
+    last_move = None
+
+    def get_internals():
+        return {
+            'alpha': alpha,
+            'weights': weights,
+        }
+    
+    def backup(turn, outcome):
+        nonlocal alpha
+        # backup outcome to our last move's weights. 
+        prev_score = weights[last_move][turn]
+        adjusted_prev_score = prev_score + alpha * (outcome - prev_score)
+        weights[last_move][turn] = adjusted_prev_score
+
+        # turn down the knob, just a bit.
+        alpha *= 0.999
+
+    def rl_player(action, data=None):
+        nonlocal last_move
+
+        if action == NEW_GAME_ACTION:
+            last_move = None
+        elif action == END_GAME_ACTION:
+            turn, outcome = data
+            backup(turn, outcome)
+        elif action == MOVE_ACTION:
+            board, moves = data
+            from random import random, choice, shuffle
+
+            exploratory = random() < explore_rate
+            if exploratory:
+                move = choice(moves)
+                last_move = move
+                # no backup on exploratory moves
+
+            else:
+                state = classify_board(board)
+                turn = X_TOK if state == XTURN_STATE else O_TOK
+
+                # 1. pick our move greedily
+                move, score = None, -1
+                shuffle(moves) # break ties randomly
+                for candidate in moves:
+                    our_score = weights[candidate][turn]
+                    if our_score > score:
+                        move = candidate
+                        score = our_score
+
+                # 2. backup (since this is not an exploratory move)
+                if last_move:
+                    cur_score = weights[move][turn]
+                    backup(turn, cur_score)
+
+                # 3. Now we are the last move...
+                last_move = move
+
+            return move
+        
+    return rl_player, get_internals
+
+
 
 # A wrapper to ensure that player identities 
 # are unique.
 def fac(player):
-    def fn(board, moves):
-        return player(board, moves)
+    def fn(action, data=None):
+        return player(action, data)
     
     return fn
 
@@ -292,7 +367,18 @@ def main():
     #     print(value)
     print("total states: ", len(states))
 
-    play_tourney(fac(random_player), fac(random_player), 10000)
+    agent, get_internals = rl_player_factory()
+    rando = fac(random_player)
+    # play(agent, rando, verbose=True)
+
+
+    play_tourney(rando, agent, 100000)
+
+    rl_internals = get_internals()
+    print(rl_internals["alpha"])
+
+    play_tourney(rando, rl_player_factory(weights=rl_internals["weights"])[0], 1000)
+
 
 
 if __name__ == '__main__':
