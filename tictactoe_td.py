@@ -283,7 +283,7 @@ def random_player(action, data=None):
         board, moves = data
         return choice(moves)
 
-def rl_player_factory(explore_rate=0.1, weights=None):
+def rl_player_factory(explore_rate=0.10, decay=0.99999, weights=None):
     # weights 
     if not weights:
         weights = make_states()
@@ -305,7 +305,7 @@ def rl_player_factory(explore_rate=0.1, weights=None):
         weights[last_move][turn] = adjusted_prev_score
 
         # turn down the knob, just a bit.
-        alpha *= 0.999
+        alpha *= decay
 
     def rl_player(action, data=None):
         nonlocal last_move
@@ -367,7 +367,7 @@ def main():
     #     print(value)
     print("total states: ", len(states))
 
-    agent, get_internals = rl_player_factory()
+    agent, get_internals = rl_player_factory(explore_rate=0.4)
     rando = fac(random_player)
     # play(agent, rando, verbose=True)
 
@@ -375,10 +375,10 @@ def main():
     play_tourney(rando, agent, 100000)
 
     rl_internals = get_internals()
+
+    play_tourney(rando, rl_player_factory(weights=rl_internals["weights"], explore_rate=0)[0])
+
     print(rl_internals["alpha"])
-
-    play_tourney(rando, rl_player_factory(weights=rl_internals["weights"])[0], 1000)
-
 
 
 if __name__ == '__main__':
