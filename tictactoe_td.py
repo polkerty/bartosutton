@@ -367,28 +367,35 @@ def main():
     #     print(value)
     print("total states: ", len(states))
 
-    agent, get_internals = rl_player_factory(explore_rate=0.4)
+    agent, get_internals = rl_player_factory(explore_rate=0.4, decay=0.99999)
+    agent2, get_internals2 = rl_player_factory(explore_rate=0.4, decay=0.99999)
     rando = fac(random_player)
     # play(agent, rando, verbose=True)
 
 
-    play_tourney(rando, agent, 100000)
+    # play_tourney(rando, agent, 100000)
+    play_tourney(agent, agent2, 100000)
 
     rl_internals = get_internals()
+    rl_internals2 = get_internals2()
 
     sumo = rl_player_factory(weights=rl_internals["weights"], explore_rate=0)[0]
+    sumo2 = rl_player_factory(weights=rl_internals2["weights"], explore_rate=0)[0]
 
+    # play_tourney(rando, sumo)
     play_tourney(rando, sumo)
 
     print(rl_internals["alpha"])
+    print(rl_internals2["alpha"])
 
-    for _ in range(10):
-        print("sumo vs rando:")
-        play(sumo, rando, verbose=True)
-        print("rando vs sumo:")
-        play(rando, sumo, verbose=True)
-        print("sumo vs sumo!:")
-        play(sumo, sumo, verbose=True)
+    # for _ in range(2):
+    #     print("sumo vs rando:")
+    #     play(sumo, rando, verbose=True)
+    #     print("rando vs sumo:")
+    #     play(rando, sumo, verbose=True)
+    #     print("sumo vs sumo!:")
+    #     play(sumo, sumo, verbose=True)
+
 
 
 if __name__ == '__main__':
